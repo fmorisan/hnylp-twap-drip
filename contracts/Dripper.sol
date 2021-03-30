@@ -116,7 +116,10 @@ contract Dripper is Ownable {
         }
 
         // swap fromToken to endToken
-        address[] memory path = address[]([address(startToken), address(endToken)]);
+        address[] memory path = new address[](2);
+        path[0] = address(startToken);
+        path[1] = address(endToken);
+        // ([address(startToken), address(endToken)]);
         uint[] memory amounts = router.swapExactTokensForTokens(
             startTokenFromStartLP,
             price.mul(startTokenFromStartLP).div(ONE),
