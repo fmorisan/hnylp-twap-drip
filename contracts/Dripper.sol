@@ -1,12 +1,16 @@
 pragma solidity ^0.6.0;
 
+import "./interfaces/IOracle.sol";
+
 import "@openzeppelin/contracts/access/Ownable.sol";
-// import { IERC20 as OZIERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { IERC20 as OZIERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeMath as OZSafeMath } from "@openzeppelin/contracts/math/SafeMath.sol";
+
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
+import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
 import "@uniswap/v2-periphery/contracts/examples/ExampleSlidingWindowOracle.sol";
-import "@uniswap/v2-periphery/contracts/UniswapV2Router02.sol";
 import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 
 
@@ -23,56 +27,68 @@ contract Dripper is Ownable {
     DripConfig public dripConfig;
     uint256 public latestDripTime;
 
-    string public constant ERROR_BASETOKEN_UNDETERMINABLE = "Dripper: Base Token cannot be determined.";
-    string public constant ERROR_CONVERSION_IMPOSSIBLE = "Dripper: Cannot find converter LP.";
     string public constant ERROR_FAR_FROM_TWAP = "Dripper: Converter LP price is too far from TWAP.";
     string public constant ERROR_DRIP_INTERVAL = "Dripper: Drip interval has not passed.";
+    string public constant ERROR_ALREADY_CONFIGURED = "Dripper: Already configured.";
+
     uint256 private constant ONE = 10**18;
 
     IUniswapV2Pair public startLP; // WETH- AGVE
     IUniswapV2Pair public endLP; // HNY-AGVE
     IUniswapV2Pair public conversionLP; // HNY-WETH
     
-    UniswapV2Router02 public router;
+    IUniswapV2Router02 public router;
     
     bool private startTokenIsFirstConversionLPToken;
 
-    IERC20 public startToken; // WETH
-    IERC20 public endToken; // HNY
-    IERC20 public baseToken; // AGVE
+    OZIERC20 public startToken; // WETH
+    OZIERC20 public endToken; // HNY
+    OZIERC20 public baseToken; // AGVE
 
-    ExampleSlidingWindowOracle public twapOracle;
+    IOracle public twapOracle;
 
     uint256 public initialStartLPBalance;
 
     event Drip(uint256 price, uint256 baseTokenAdded, uint256 endTokenAdded);
+    event c(uint256 a);
 
     constructor(
         address _startToken,
         address _endToken,
         address _baseToken,
         address payable _router,
-        address _twapOracle,
-        uint256 _transitionTime,
-        uint256 _dripSpacing
+        address _twapOracle
     ) public Ownable() {
-        router = UniswapV2Router02(_router);
-        address factory = router.factory();
+        router = IUniswapV2Router02(_router);
+        IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
+        //address factory = address(0);
 
-        startLP = IUniswapV2Pair(UniswapV2Library.pairFor(factory, _startToken, _baseToken));
-        endLP = IUniswapV2Pair(UniswapV2Library.pairFor(factory, _endToken, _baseToken));
-        conversionLP = IUniswapV2Pair(UniswapV2Library.pairFor(factory, _startToken, _endToken));
+        startLP = IUniswapV2Pair(factory.getPair(_startToken, _baseToken));
+        endLP = IUniswapV2Pair(factory.getPair(_endToken, _baseToken));
+        conversionLP = IUniswapV2Pair(factory.getPair(_startToken, _endToken));
 
-        twapOracle = ExampleSlidingWindowOracle(_twapOracle);
+        twapOracle = IOracle(_twapOracle);
 
-        dripConfig = DripConfig({
-            startTime: now,
-            transitionTime: _transitionTime,
-            dripInterval: _dripSpacing,
-            maxTWAPDifferencePct: ONE.div(100).mul(5) // accept no more than 5% deviation from TWAP
-        });
+    }
 
-        initialStartLPBalance = startLP.balanceOf(address(this));
+    function startDrip(
+        uint256 amount,
+        uint256 _transitionTime,
+        uint256 _dripSpacing,
+        uint256 _twapDeviationTolerance
+    ) public onlyOwner
+    {
+        require(dripConfig.startTime == 0, ERROR_ALREADY_CONFIGURED);
+
+        require(startLP.transferFrom(msg.sender, address(this), amount));
+        dripConfig = DripConfig(
+            now,
+            _transitionTime,
+            _dripSpacing,
+            _twapDeviationTolerance
+        );
+
+        initialStartLPBalance = amount;
     }
 
     function drip() public {
@@ -144,6 +160,12 @@ contract Dripper is Ownable {
         latestDripTime = now;
 
         emit Drip(price, baseTokenFromStartLP, endTokenToAddAsLiquidity);
+    }
+
+    function retrieve(address tokenToRetrieve) public onlyOwner {
+        OZIERC20 token = OZIERC20(tokenToRetrieve);
+        uint256 myBalance = token.balanceOf(address(this));
+        require(token.transfer(owner(), myBalance));
     }
 
     function _getConversionTWAP() internal view returns (uint256) {
