@@ -125,9 +125,8 @@ contract Dripper is Ownable {
                     timeSinceLastDrip.mul(ONE).div(dripConfig.transitionTime)
                 ).div(ONE);
 
-            uint b = startLP.balanceOf(owner());
-
             // if we don't have enough to cover this drip, then we are at the end of the drip time.
+            uint b = startLP.allowance(owner(), address(this));
             if (b < startLPToWithdraw) {
                 startLPToWithdraw = b;
             }
@@ -173,17 +172,26 @@ contract Dripper is Ownable {
             );
         }
 
+        {
+            // optimize token amounts to add as liquidity
+            // based on the amount tokens we've got
+            uint256 quote = _getQuote(address(endToken), address(baseToken));
+            uint256 optimizedBaseTokenAmount = quote.mul(endTokenToAddAsLiquidity).div(ONE);
+            uint256 optimizedEndTokenAmount = ONE.div(quote).mul(baseTokenFromStartLP);
+
+            // optimize one side, if not, optimize the other.
+            if (optimizedBaseTokenAmount <= baseTokenFromStartLP){
+                baseTokenFromStartLP = optimizedBaseTokenAmount;
+            } else if (optimizedEndTokenAmount <= endTokenToAddAsLiquidity){
+                endTokenToAddAsLiquidity = optimizedEndTokenAmount;
+            }
+        }
+
         // add fromToken and necessary amount of baseToken to endLP
         endToken.approve(address(router), endTokenToAddAsLiquidity);
         baseToken.approve(address(router), baseTokenFromStartLP);
-        {
-            // optimize base token amount to add as liquidity
-            // based on the amount of end tokens we got
-            uint256 quote = _getQuote(address(endToken), address(baseToken));
-            uint256 NbaseTokenFromStartLP = quote.mul(endTokenToAddAsLiquidity).div(ONE);
 
-            baseTokenFromStartLP = NbaseTokenFromStartLP;
-        }
+        // actually add the liquidity
         router.addLiquidity(
             address(endToken),
             address(baseToken),
