@@ -298,4 +298,15 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.dripper.drip()
     )
   })
+
+  it("should send back tokens to the owner if retrieve function is called", async () => {
+    await this.hny.transfer(this.dripper.address, ONE)
+    const hnybalanceBefore = await this.hny.balanceOf(this.dripper.address)
+
+    await truffleAssert.passes(
+      this.dripper.retrieve(this.hny.address)
+    )
+    const hnybalance = await this.hny.balanceOf(this.dripper.address)
+    assert(new Big(hnybalance).eq(new Big(0)), `Balance should be zero, but is ${hnybalance.toString()}`)
+  })
 })

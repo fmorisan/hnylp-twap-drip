@@ -40,6 +40,7 @@ function startDrip(
     uint256 _slippageTolerance          // The maximum tolerable slippage percentage (where 1e18 is 100%)
 ) public onlyOwner
 ```
-> Note that this call will consume `amount` TKA/TKB pool tokens and leave them in the contract. If it is required, the `retrieve(address token)` function can be used to retrieve the indicated token's balance from the contract.
 
 After that, you should be able to start calling the `drip()` function every `_dripSpacing` seconds, and it should automatically drip the value from one LP into another one.
+> Note that this call will consume some TKA/TKB pool tokens in order to actually execute the drip. Thus, it is required that an approval for the whole amount is set before starting the drip.
+> Excess tokens resulting from price differences are kept in the contract. When required, the `retrieve(address token)` function can be used to retrieve the any token's balance from the contract.

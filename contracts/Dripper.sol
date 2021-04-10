@@ -23,6 +23,7 @@ contract Dripper is Ownable {
         uint dripInterval;
         uint maxTWAPDifferencePct;
         uint maxSlippageTolerancePct;
+        uint amountToDrip;
     }
 
     DripConfig public dripConfig;
@@ -87,13 +88,13 @@ contract Dripper is Ownable {
     {
         require(dripConfig.startTime == 0, ERROR_ALREADY_CONFIGURED);
 
-        require(startLP.transferFrom(msg.sender, address(this), amount));
         dripConfig = DripConfig(
             now,
             _transitionTime,
             _dripSpacing,
             _twapDeviationTolerance,
-            _slippageTolerance
+            _slippageTolerance,
+            amount
         );
 
         initialStartLPBalance = amount;
@@ -120,17 +121,21 @@ contract Dripper is Ownable {
                 latestDripTime < dripConfig.startTime ?
                     dripConfig.startTime : latestDripTime
             );
-            uint256 startLPToWithdraw = initialStartLPBalance.mul(
+            uint256 startLPToWithdraw = dripConfig.amountToDrip.mul(
                     timeSinceLastDrip.mul(ONE).div(dripConfig.transitionTime)
                 ).div(ONE);
 
-
-            uint b = startLP.balanceOf((address(this)));
+            uint b = startLP.balanceOf(owner());
 
             // if we don't have enough to cover this drip, then we are at the end of the drip time.
             if (b < startLPToWithdraw) {
                 startLPToWithdraw = b;
             }
+
+            // Ingest tokens on drip() call
+            require(
+                startLP.transferFrom(owner(), address(this), startLPToWithdraw)
+            );
 
             startLP.approve(address(router), startLPToWithdraw);
             // withdraw it
@@ -207,12 +212,6 @@ contract Dripper is Ownable {
 
     function _getConversionPrice() internal view returns (uint256) {
         return _getQuote(address(startToken), address(endToken));
-        // (uint112 balance0, uint112 balance1, ) = conversionLP.getReserves();
-        // if (address(startToken) == conversionLP.token0()) {
-        //     return UniswapV2Library.quote(ONE, balance0, balance1);
-        // } else {
-        //     return UniswapV2Library.quote(ONE, balance1, balance0);
-        // }
     }
 
     function _getQuote(address tokenA, address tokenB) internal view returns (uint256) {
