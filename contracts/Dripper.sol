@@ -81,7 +81,8 @@ contract Dripper is Ownable {
         uint256 amount,
         uint256 _transitionTime,
         uint256 _dripSpacing,
-        uint256 _twapDeviationTolerance
+        uint256 _twapDeviationTolerance,
+        uint256 _slippageTolerance
     ) public onlyOwner
     {
         require(dripConfig.startTime == 0, ERROR_ALREADY_CONFIGURED);
@@ -92,7 +93,7 @@ contract Dripper is Ownable {
             _transitionTime,
             _dripSpacing,
             _twapDeviationTolerance,
-            ONE.div(100).mul(2) // 2% slippage tolerance
+            _slippageTolerance
         );
 
         initialStartLPBalance = amount;

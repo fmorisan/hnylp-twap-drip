@@ -182,6 +182,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
         startLPBalance,
         new Big(1),
         new Big(60),
+        ONE.div(100).times(2),
         ONE.div(100).times(2)
       )
     )
@@ -191,6 +192,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
         startLPBalance,
         new Big(1),
         new Big(60),
+        ONE.div(100).times(2),
         ONE.div(100).times(2)
       )
     )
@@ -207,6 +209,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
         startLPBalance,
         new Big(3600),
         new Big(60),
+        ONE.div(100).times(2),
         ONE.div(100).times(2)
       )
     )
@@ -247,6 +250,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
         startLPBalance,
         new Big(3600),
         new Big(60),
+        ONE.div(100).times(2),
         ONE.div(100).times(2)
       )
     )
@@ -271,6 +275,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
         startLPBalance,
         new Big(3600),
         new Big(60),
+        ONE.div(100).times(2),
         ONE.div(100).times(2)
       )
     )
