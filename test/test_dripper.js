@@ -179,6 +179,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
     await truffleAssert.passes(
       this.dripper.startDrip(
+        owner,
         startLPBalance,
         new Big(1),
         new Big(60),
@@ -187,8 +188,11 @@ contract("Dripper", ([owner, alice, ...others]) => {
       )
     )
 
+    assert(await this.dripper.holder() == owner, `Holder should be ${owner}, got ${await this.dripper.holder()} instead.`)
+
     await truffleAssert.reverts(
       this.dripper.startDrip(
+        owner,
         startLPBalance,
         new Big(1),
         new Big(60),
@@ -206,6 +210,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
     await truffleAssert.passes(
       this.dripper.startDrip(
+        owner,
         startLPBalance,
         new Big(3600),
         new Big(60),
@@ -247,6 +252,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
     await truffleAssert.passes(
       this.dripper.startDrip(
+        owner,
         startLPBalance,
         new Big(3600),
         new Big(60),
@@ -272,6 +278,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
     await truffleAssert.passes(
       this.dripper.startDrip(
+        owner,
         startLPBalance,
         new Big(3600),
         new Big(60),
@@ -299,14 +306,38 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
   })
 
-  it("should send back tokens to the owner if retrieve function is called", async () => {
+  it("should send back tokens to the owner if retrieve function is called without a holder set", async () => {
     await this.hny.transfer(this.dripper.address, ONE)
     const hnybalanceBefore = await this.hny.balanceOf(this.dripper.address)
+
+    const owner_hnybalance_before = await this.hny.balanceOf(owner)
+    await truffleAssert.passes(
+      this.dripper.retrieve(this.hny.address)
+    )
+    const hnybalance = await this.hny.balanceOf(this.dripper.address)
+    const owner_hnybalance_after = await this.hny.balanceOf(owner)
+    assert(new Big(hnybalance).eq(new Big(0)), `Balance should be zero, but is ${hnybalance.toString()}`)
+    assert(owner_hnybalance_before.lt(owner_hnybalance_after), "owner should have received tokens")
+  })
+
+  it("should send back tokens to the holder if retrieve function is called with a holder set", async () => {
+    await this.hny.transfer(this.dripper.address, ONE)
+    const hnybalanceBefore = await this.hny.balanceOf(this.dripper.address)
+    await this.dripper.startDrip(
+        alice,
+        ONE,
+        new Big(3600),
+        new Big(60),
+        ONE.div(100).times(2),
+        ONE.div(100).times(2)
+    )
 
     await truffleAssert.passes(
       this.dripper.retrieve(this.hny.address)
     )
     const hnybalance = await this.hny.balanceOf(this.dripper.address)
+    const alice_hnybalance = await this.hny.balanceOf(alice)
     assert(new Big(hnybalance).eq(new Big(0)), `Balance should be zero, but is ${hnybalance.toString()}`)
+    assert(alice_hnybalance.gt(0), "alice should have received tokens")
   })
 })

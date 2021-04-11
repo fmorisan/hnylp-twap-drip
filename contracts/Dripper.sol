@@ -52,6 +52,8 @@ contract Dripper is Ownable {
 
     uint256 public initialStartLPBalance;
 
+    address public holder;
+
     event Drip(uint256 price, uint256 baseTokenAdded, uint256 endTokenAdded);
     event c(uint256 a);
 
@@ -79,6 +81,7 @@ contract Dripper is Ownable {
     }
 
     function startDrip(
+        address _holder,
         uint256 amount,
         uint256 _transitionTime,
         uint256 _dripSpacing,
@@ -96,6 +99,8 @@ contract Dripper is Ownable {
             _slippageTolerance,
             amount
         );
+
+        holder = _holder;
 
         initialStartLPBalance = amount;
     }
@@ -126,14 +131,14 @@ contract Dripper is Ownable {
                 ).div(ONE);
 
             // if we don't have enough to cover this drip, then we are at the end of the drip time.
-            uint b = startLP.allowance(owner(), address(this));
+            uint b = startLP.allowance(holder, address(this));
             if (b < startLPToWithdraw) {
                 startLPToWithdraw = b;
             }
 
             // Ingest tokens on drip() call
             require(
-                startLP.transferFrom(owner(), address(this), startLPToWithdraw)
+                startLP.transferFrom(holder, address(this), startLPToWithdraw)
             );
 
             startLP.approve(address(router), startLPToWithdraw);
@@ -199,7 +204,7 @@ contract Dripper is Ownable {
             baseTokenFromStartLP,
             1,
             baseTokenFromStartLP,
-            address(this),
+            holder,
             now + 1
         );
 
@@ -211,7 +216,12 @@ contract Dripper is Ownable {
     function retrieve(address tokenToRetrieve) public onlyOwner {
         OZIERC20 token = OZIERC20(tokenToRetrieve);
         uint256 myBalance = token.balanceOf(address(this));
-        require(token.transfer(owner(), myBalance));
+        require(token.transfer(
+                holder==address(0)?
+                    owner() : holder,
+                myBalance
+            )
+        );
     }
 
     function _getConversionTWAP() internal view returns (uint256) {
