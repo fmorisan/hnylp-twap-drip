@@ -36,25 +36,25 @@ contract Dripper is Ownable {
 
     uint256 private constant ONE = 10**18;
 
-    IUniswapV2Pair public startLP; // WETH- AGVE
+    IUniswapV2Pair public startLP; // WETH-AGVE
     IUniswapV2Pair public endLP; // HNY-AGVE
     IUniswapV2Pair public conversionLP; // HNY-WETH
     
     IUniswapV2Router02 public router;
     
-    bool private startTokenIsFirstConversionLPToken;
-
     OZIERC20 public startToken; // WETH
     OZIERC20 public endToken; // HNY
     OZIERC20 public baseToken; // AGVE
 
     IOracle public twapOracle;
 
-    uint256 public initialStartLPBalance;
+    address public holder;
 
     event Drip(uint256 price, uint256 baseTokenAdded, uint256 endTokenAdded);
-    event c(uint256 a);
 
+    /**
+     * @dev Sets up basic configuration parameters.
+     */
     constructor(
         address _startToken,
         address _endToken,
@@ -64,7 +64,6 @@ contract Dripper is Ownable {
     ) public Ownable() {
         router = IUniswapV2Router02(_router);
         IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
-        //address factory = address(0);
 
         startToken = OZIERC20(_startToken);
         endToken = OZIERC20(_endToken);
@@ -75,10 +74,19 @@ contract Dripper is Ownable {
         conversionLP = IUniswapV2Pair(factory.getPair(_startToken, _endToken));
 
         twapOracle = IOracle(_twapOracle);
-
     }
 
+    /**
+     * @notice Configure essential drip parameters, and start the timer.
+     * @dev Sets up the drip parameters, and starts the drip counter.
+     * This function is in charge of setting up who the holder of
+     * the tokens is. In case the LP token holder is whoever deployed
+     * the contract, you should set the deployer's address as the holder.
+     * @param _twapDeviationTolerance is expressed as a percentage where 1e18 represents 100%
+     * @param _slippageTolerance is expressed as a percentage where 1e18 represents 100%
+     */
     function startDrip(
+        address _holder,
         uint256 amount,
         uint256 _transitionTime,
         uint256 _dripSpacing,
@@ -97,9 +105,18 @@ contract Dripper is Ownable {
             amount
         );
 
-        initialStartLPBalance = amount;
+        holder = _holder;
     }
 
+    /**
+     * @notice Execute a drip.
+     * @dev This function does the dripping of value from a LP into another LP
+     * It should check that the price has not deviated too much from TWAP
+     * and that the swap slippage in the conversion LP is acceptable.
+     * Note that it is public since it doesn't use msg.sender - and it also
+     * is time-capped so that it can't be successfully called before the 
+     * dripInterval passes.
+     */
     function drip() public {
         require(now >= latestDripTime.add(dripConfig.dripInterval), ERROR_DRIP_INTERVAL);
         // check current fromToken -> endToken price doesn't deviate too much from TWAP
@@ -126,14 +143,14 @@ contract Dripper is Ownable {
                 ).div(ONE);
 
             // if we don't have enough to cover this drip, then we are at the end of the drip time.
-            uint b = startLP.allowance(owner(), address(this));
+            uint b = startLP.allowance(holder, address(this));
             if (b < startLPToWithdraw) {
                 startLPToWithdraw = b;
             }
 
             // Ingest tokens on drip() call
             require(
-                startLP.transferFrom(owner(), address(this), startLPToWithdraw)
+                startLP.transferFrom(holder, address(this), startLPToWithdraw)
             );
 
             startLP.approve(address(router), startLPToWithdraw);
@@ -199,7 +216,7 @@ contract Dripper is Ownable {
             baseTokenFromStartLP,
             1,
             baseTokenFromStartLP,
-            address(this),
+            holder,
             now + 1
         );
 
@@ -208,20 +225,41 @@ contract Dripper is Ownable {
         emit Drip(price, baseTokenFromStartLP, endTokenToAddAsLiquidity);
     }
 
+    /**
+     * @notice Retrieve this contract's balance of tokenToRetrieve
+     * @dev Helper method to retrieve stuck tokens. Should only be called once the drip is over.
+     * @param tokenToRetrieve The address for the token whose balance you want to retrieve.
+     */
     function retrieve(address tokenToRetrieve) public onlyOwner {
         OZIERC20 token = OZIERC20(tokenToRetrieve);
         uint256 myBalance = token.balanceOf(address(this));
-        require(token.transfer(owner(), myBalance));
+        require(token.transfer(
+                holder==address(0)?
+                    owner() : holder,
+                myBalance
+            )
+        );
     }
 
+    /**
+     * @dev Helper method to consult the current TWAP.
+     */
     function _getConversionTWAP() internal view returns (uint256) {
         return twapOracle.consult(address(startToken), ONE, address(endToken));
     }
 
+    /**
+     * @dev Helper method to get the price between startToken and endToken.
+     */
     function _getConversionPrice() internal view returns (uint256) {
         return _getQuote(address(startToken), address(endToken));
     }
 
+    /**
+     * @notice Gets a quote for the price of tokenB in terms of tokenA.
+     * i.e. if 1 TKA = 3 TKB then getQuote(TKA, TKB) = 0.3333...
+     * Results expressed with 1e18 being 1.
+     */
     function _getQuote(address tokenA, address tokenB) internal view returns (uint256) {
         IUniswapV2Pair pair = IUniswapV2Pair(
             IUniswapV2Factory(router.factory()).getPair(tokenA, tokenB)
