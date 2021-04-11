@@ -36,7 +36,7 @@ contract Dripper is Ownable {
 
     uint256 private constant ONE = 10**18;
 
-    IUniswapV2Pair public startLP; // WETH- AGVE
+    IUniswapV2Pair public startLP; // WETH-AGVE
     IUniswapV2Pair public endLP; // HNY-AGVE
     IUniswapV2Pair public conversionLP; // HNY-WETH
     
@@ -52,6 +52,9 @@ contract Dripper is Ownable {
 
     event Drip(uint256 price, uint256 baseTokenAdded, uint256 endTokenAdded);
 
+    /**
+     * @dev Sets up basic configuration parameters.
+     */
     constructor(
         address _startToken,
         address _endToken,
@@ -73,6 +76,15 @@ contract Dripper is Ownable {
         twapOracle = IOracle(_twapOracle);
     }
 
+    /**
+     * @notice Configure essential drip parameters, and start the timer.
+     * @dev Sets up the drip parameters, and starts the drip counter.
+     * This function is in charge of setting up who the holder of
+     * the tokens is. In case the LP token holder is whoever deployed
+     * the contract, you should set the deployer's address as the holder.
+     * @param _twapDeviationTolerance is expressed as a percentage where 1e18 represents 100%
+     * @param _slippageTolerance is expressed as a percentage where 1e18 represents 100%
+     */
     function startDrip(
         address _holder,
         uint256 amount,
@@ -96,6 +108,15 @@ contract Dripper is Ownable {
         holder = _holder;
     }
 
+    /**
+     * @notice Execute a drip.
+     * @dev This function does the dripping of value from a LP into another LP
+     * It should check that the price has not deviated too much from TWAP
+     * and that the swap slippage in the conversion LP is acceptable.
+     * Note that it is public since it doesn't use msg.sender - and it also
+     * is time-capped so that it can't be successfully called before the 
+     * dripInterval passes.
+     */
     function drip() public {
         require(now >= latestDripTime.add(dripConfig.dripInterval), ERROR_DRIP_INTERVAL);
         // check current fromToken -> endToken price doesn't deviate too much from TWAP
@@ -204,6 +225,11 @@ contract Dripper is Ownable {
         emit Drip(price, baseTokenFromStartLP, endTokenToAddAsLiquidity);
     }
 
+    /**
+     * @notice Retrieve this contract's balance of tokenToRetrieve
+     * @dev Helper method to retrieve stuck tokens. Should only be called once the drip is over.
+     * @param tokenToRetrieve The address for the token whose balance you want to retrieve.
+     */
     function retrieve(address tokenToRetrieve) public onlyOwner {
         OZIERC20 token = OZIERC20(tokenToRetrieve);
         uint256 myBalance = token.balanceOf(address(this));
@@ -215,14 +241,25 @@ contract Dripper is Ownable {
         );
     }
 
+    /**
+     * @dev Helper method to consult the current TWAP.
+     */
     function _getConversionTWAP() internal view returns (uint256) {
         return twapOracle.consult(address(startToken), ONE, address(endToken));
     }
 
+    /**
+     * @dev Helper method to get the price between startToken and endToken.
+     */
     function _getConversionPrice() internal view returns (uint256) {
         return _getQuote(address(startToken), address(endToken));
     }
 
+    /**
+     * @notice Gets a quote for the price of tokenB in terms of tokenA.
+     * i.e. if 1 TKA = 3 TKB then getQuote(TKA, TKB) = 0.3333...
+     * Results expressed with 1e18 being 1.
+     */
     function _getQuote(address tokenA, address tokenB) internal view returns (uint256) {
         IUniswapV2Pair pair = IUniswapV2Pair(
             IUniswapV2Factory(router.factory()).getPair(tokenA, tokenB)
