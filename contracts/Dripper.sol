@@ -42,20 +42,15 @@ contract Dripper is Ownable {
     
     IUniswapV2Router02 public router;
     
-    bool private startTokenIsFirstConversionLPToken;
-
     OZIERC20 public startToken; // WETH
     OZIERC20 public endToken; // HNY
     OZIERC20 public baseToken; // AGVE
 
     IOracle public twapOracle;
 
-    uint256 public initialStartLPBalance;
-
     address public holder;
 
     event Drip(uint256 price, uint256 baseTokenAdded, uint256 endTokenAdded);
-    event c(uint256 a);
 
     constructor(
         address _startToken,
@@ -66,7 +61,6 @@ contract Dripper is Ownable {
     ) public Ownable() {
         router = IUniswapV2Router02(_router);
         IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
-        //address factory = address(0);
 
         startToken = OZIERC20(_startToken);
         endToken = OZIERC20(_endToken);
@@ -77,7 +71,6 @@ contract Dripper is Ownable {
         conversionLP = IUniswapV2Pair(factory.getPair(_startToken, _endToken));
 
         twapOracle = IOracle(_twapOracle);
-
     }
 
     function startDrip(
@@ -101,8 +94,6 @@ contract Dripper is Ownable {
         );
 
         holder = _holder;
-
-        initialStartLPBalance = amount;
     }
 
     function drip() public {
