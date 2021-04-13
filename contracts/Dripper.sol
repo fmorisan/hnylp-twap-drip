@@ -1,3 +1,4 @@
+pragma experimental ABIEncoderV2;
 pragma solidity ^0.6.0;
 
 import "./interfaces/IOracle.sol";
@@ -13,10 +14,28 @@ import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-periphery/contracts/examples/ExampleSlidingWindowOracle.sol";
 import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 
+import "hardhat/console.sol";
+
 
 contract Dripper is Ownable {
     using OZSafeMath for uint256;
 
+    struct DripParams {
+        uint transitionTime;
+        uint dripInterval;
+        uint maxTWAPDifferencePct;
+        uint maxSlippageTolerancePct;
+        uint amountToDrip;
+    }
+
+    /**
+     * startTime: the starting timestamp of the drip process
+     * transitionTime: the total time the drip process will run for
+     * dripInterval: the minimum time between drip calls which will be enforced by the contract
+     * maxTWAPDifferencePct: the maximum twap difference tolerance, expressed as a percentage where 1e18 represents 100%
+     * maxSlippageTolerancePct the maximum slippage tolerance, expressed as a percentage where 1e18 represents 100%
+     * amountToDrip: the total amount of starting LP tokens that the drip function will consume
+     */
     struct DripConfig {
         uint startTime;
         uint transitionTime;
@@ -53,14 +72,27 @@ contract Dripper is Ownable {
     event Drip(uint256 price, uint256 baseTokenAdded, uint256 endTokenAdded);
 
     /**
-     * @dev Sets up basic configuration parameters.
+     * @notice Configure essential drip parameters, and start the timer.
+     * @dev Sets up the drip parameters, and starts the drip counter.
+     * This function is in charge of setting up who the holder of
+     * the tokens is. In case the LP token holder is whoever deployed
+     * the contract, you should set the deployer's address as the holder.
+     * @param _baseToken the token that is shared between thet starting LP and the end LP
+     * @param _startToken the starting LP specific token
+     * @param _endToken the ending LP specific token
+     * @param _router the address of the Uniswap Router that knows the pools we're going to interact with
+     * @param _twapOracle the TWAP oracle that keeps track of LP states
+     * @param _tokenHolder the address that holds the LP tokens we will interact with
+     * @param _dripConfig the configuration parameters for the drippping process
      */
     constructor(
         address _startToken,
         address _endToken,
         address _baseToken,
         address payable _router,
-        address _twapOracle
+        address _twapOracle,
+        address _tokenHolder,
+        DripParams memory _dripConfig
     ) public Ownable() {
         router = IUniswapV2Router02(_router);
         IUniswapV2Factory factory = IUniswapV2Factory(router.factory());
@@ -74,38 +106,17 @@ contract Dripper is Ownable {
         conversionLP = IUniswapV2Pair(factory.getPair(_startToken, _endToken));
 
         twapOracle = IOracle(_twapOracle);
-    }
-
-    /**
-     * @notice Configure essential drip parameters, and start the timer.
-     * @dev Sets up the drip parameters, and starts the drip counter.
-     * This function is in charge of setting up who the holder of
-     * the tokens is. In case the LP token holder is whoever deployed
-     * the contract, you should set the deployer's address as the holder.
-     * @param _twapDeviationTolerance is expressed as a percentage where 1e18 represents 100%
-     * @param _slippageTolerance is expressed as a percentage where 1e18 represents 100%
-     */
-    function startDrip(
-        address _holder,
-        uint256 amount,
-        uint256 _transitionTime,
-        uint256 _dripSpacing,
-        uint256 _twapDeviationTolerance,
-        uint256 _slippageTolerance
-    ) public onlyOwner
-    {
-        require(dripConfig.startTime == 0, ERROR_ALREADY_CONFIGURED);
 
         dripConfig = DripConfig(
             now,
-            _transitionTime,
-            _dripSpacing,
-            _twapDeviationTolerance,
-            _slippageTolerance,
-            amount
+            _dripConfig.transitionTime,
+            _dripConfig.dripInterval,
+            _dripConfig.maxTWAPDifferencePct,
+            _dripConfig.maxSlippageTolerancePct,
+            _dripConfig.amountToDrip
         );
 
-        holder = _holder;
+        holder = _tokenHolder;
     }
 
     /**
