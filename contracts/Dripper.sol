@@ -145,7 +145,7 @@ contract Dripper is Ownable {
         uint256 baseTokenFromStartLP;
         {
             // calculate how much should be withdrawn
-            uint256 timeSinceLastDrip = now - (
+            uint256 timeSinceLastDrip = block.timestamp.sub(
                 latestDripTime < dripConfig.startTime ?
                     dripConfig.startTime : latestDripTime
             );
