@@ -153,12 +153,6 @@ contract Dripper is Ownable {
                     timeSinceLastDrip.mul(ONE).div(dripConfig.transitionTime)
                 ).div(ONE);
 
-            // if we don't have enough to cover this drip, then we are at the end of the drip time.
-            uint b = startLP.allowance(holder, address(this));
-            if (b < startLPToWithdraw) {
-                startLPToWithdraw = b;
-            }
-
             // Ingest tokens on drip() call
             require(
                 startLP.transferFrom(holder, address(this), startLPToWithdraw)
