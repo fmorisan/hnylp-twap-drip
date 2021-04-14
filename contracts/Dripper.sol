@@ -61,6 +61,8 @@ contract Dripper is Ownable {
     string public constant ERROR_ALREADY_CONFIGURED = "Dripper: Already configured.";
     string public constant ERROR_INTOLERABLE_SLIPPAGE = "Dripper: Slippage exceeds configured limit.";
     string public constant ERROR_DRIP_DONE = "Dripper: Drip process has ended.";
+    string public constant ERROR_DRIP_NOT_DONE = "Dripper: Drip process has not ended.";
+    
 
     uint256 private constant ONE = 10**18;
 
@@ -79,6 +81,9 @@ contract Dripper is Ownable {
     address public holder;
 
     event Drip(uint256 price, uint256 baseTokenAdded, uint256 endTokenAdded);
+    event DripEnded();
+
+    event TokenRetrieved(address token, uint256 balance);
 
     /**
      * @notice Configure essential drip parameters, and start the timer.
@@ -143,110 +148,36 @@ contract Dripper is Ownable {
     function drip() public {
         require(dripStatus == DripStatus.RUNNING, ERROR_DRIP_DONE);
         require(now >= latestDripTime.add(dripConfig.dripInterval), ERROR_DRIP_INTERVAL);
+
         // check current fromToken -> endToken price doesn't deviate too much from TWAP
-        uint256 price = _getConversionPrice();
-        {
-            uint256 twap = _getConversionTWAP();
-            require(
-                twap.mul(ONE).div(price) < ONE.add(dripConfig.maxTWAPDifferencePct)
-                && price.mul(ONE).div(twap) < ONE.add(dripConfig.maxTWAPDifferencePct),
-                ERROR_FAR_FROM_TWAP
-            );
-        }
-        // get start lp balance
-        uint256 startTokenFromStartLP;
-        uint256 baseTokenFromStartLP;
-        {
-            // calculate how much should be withdrawn
-            uint256 timeSinceLastDrip = block.timestamp.sub(
-                latestDripTime < dripConfig.startTime ?
-                    dripConfig.startTime : latestDripTime
-            );
-            uint256 startLPToWithdraw = dripConfig.amountToDrip.mul(
-                    timeSinceLastDrip.mul(ONE).div(dripConfig.transitionTime)
-                ).div(ONE);
+        uint256 price = _checkPrice();
 
-            // Ingest tokens on drip() call
-            require(
-                startLP.transferFrom(holder, address(this), startLPToWithdraw)
-            );
+        uint256 lpTokensToWithdraw = _calculateDrip();
 
-            // update drip progress counter
-            dripConfig.amountDripped = dripConfig.amountDripped.add(startLPToWithdraw);
-
-            startLP.approve(address(router), startLPToWithdraw);
-            // withdraw it
-            (
-                startTokenFromStartLP, baseTokenFromStartLP
-            ) = router.removeLiquidity(
-                address(startToken),
-                address(baseToken),
-                startLPToWithdraw,
-                1, 1,
-                address(this),
-                now + 1
-            );
-        }
-
-        // swap fromToken to endToken
-        address[] memory path = new address[](2);
-        path[0] = address(startToken);
-        path[1] = address(endToken);
-        // ([address(startToken), address(endToken)]);
-        uint256 expectedOutput = _getQuote(address(startToken), address(endToken)).mul(startTokenFromStartLP).div(ONE);
-        startToken.approve(address(router), startTokenFromStartLP);
-        uint[] memory amounts = router.swapExactTokensForTokens(
-            startTokenFromStartLP,
-            1, //price.mul(startTokenFromStartLP).div(ONE),
-            path,
-            address(this),
-            now + 1
+        // Ingest tokens on drip() call
+        require(
+            startLP.transferFrom(holder, address(this), lpTokensToWithdraw)
         );
-        uint256 endTokenToAddAsLiquidity = amounts[amounts.length - 1];
-        {
-            uint256 slippage = expectedOutput.sub(endTokenToAddAsLiquidity).mul(ONE).div(expectedOutput);
-            require(
-                slippage < dripConfig.maxSlippageTolerancePct, ERROR_INTOLERABLE_SLIPPAGE
-            );
-        }
 
-        {
-            // optimize token amounts to add as liquidity
-            // based on the amount tokens we've got
-            uint256 quote = _getQuote(address(endToken), address(baseToken));
-            uint256 optimizedBaseTokenAmount = quote.mul(endTokenToAddAsLiquidity).div(ONE);
-            uint256 optimizedEndTokenAmount = ONE.div(quote).mul(baseTokenFromStartLP);
+        (uint256 startTokenAmt, uint256 baseTokenAmt) = _withdraw(lpTokensToWithdraw);
 
-            // optimize one side, if not, optimize the other.
-            if (optimizedBaseTokenAmount <= baseTokenFromStartLP){
-                baseTokenFromStartLP = optimizedBaseTokenAmount;
-            } else if (optimizedEndTokenAmount <= endTokenToAddAsLiquidity){
-                endTokenToAddAsLiquidity = optimizedEndTokenAmount;
-            }
-        }
 
-        // add fromToken and necessary amount of baseToken to endLP
-        endToken.approve(address(router), endTokenToAddAsLiquidity);
-        baseToken.approve(address(router), baseTokenFromStartLP);
+        dripConfig.amountDripped = dripConfig.amountDripped.add(lpTokensToWithdraw);
 
-        // actually add the liquidity
-        router.addLiquidity(
-            address(endToken),
-            address(baseToken),
-            endTokenToAddAsLiquidity,
-            baseTokenFromStartLP,
-            1,
-            baseTokenFromStartLP,
-            holder,
-            now + 1
+        uint256 endTokenAmt = _swapTokens(startTokenAmt);
+
+        (endTokenAmt, baseTokenAmt) = _optimizeAmounts(
+            endTokenAmt, baseTokenAmt
         );
+
+        _addLiquidity(endTokenAmt, baseTokenAmt);
 
         latestDripTime = now;
 
-        emit Drip(price, baseTokenFromStartLP, endTokenToAddAsLiquidity);
+        emit Drip(price, baseTokenAmt, endTokenAmt);
 
         if (dripConfig.amountDripped >= dripConfig.amountToDrip) {
-            dripStatus = DripStatus.DONE;
+            _endDrip();
         }
     }
 
@@ -256,14 +187,30 @@ contract Dripper is Ownable {
      * @param tokenToRetrieve The address for the token whose balance you want to retrieve.
      */
     function retrieve(address tokenToRetrieve) public onlyOwner {
+        require(dripStatus == DripStatus.DONE, ERROR_DRIP_NOT_DONE);
         OZIERC20 token = OZIERC20(tokenToRetrieve);
         uint256 myBalance = token.balanceOf(address(this));
-        require(token.transfer(
-                holder==address(0)?
-                    owner() : holder,
-                myBalance
-            )
-        );
+        if (myBalance > 0) {
+            require(token.transfer(
+                    holder==address(0)?
+                        owner() : holder,
+                    myBalance
+                )
+            );
+            emit TokenRetrieved(address(token), myBalance);
+        }
+    }
+
+    /**
+     * @notice End the drip process and retrieve all known tokens.
+     */
+    function abort() public onlyOwner {
+        _endDrip();
+        retrieve(address(startLP));
+        retrieve(address(endLP));
+        retrieve(address(startToken));
+        retrieve(address(endToken));
+        retrieve(address(baseToken));
     }
 
     /**
@@ -296,5 +243,103 @@ contract Dripper is Ownable {
         } else {
             return UniswapV2Library.quote(ONE, balance1, balance0);
         }
+    }
+
+    function _endDrip() internal {
+        dripStatus = DripStatus.DONE;
+        emit DripEnded();
+    }
+
+    function _checkPrice() internal view returns (uint256) {
+        uint256 price = _getConversionPrice();
+        uint256 twap = _getConversionTWAP();
+        require(
+            twap.mul(ONE).div(price) < ONE.add(dripConfig.maxTWAPDifferencePct)
+            && price.mul(ONE).div(twap) < ONE.add(dripConfig.maxTWAPDifferencePct),
+            ERROR_FAR_FROM_TWAP
+        );
+        return price;
+    }
+
+    function _calculateDrip() internal view returns (uint256) {
+        // calculate how much should be withdrawn
+        uint256 timeSinceLastDrip = block.timestamp.sub(
+            latestDripTime < dripConfig.startTime ?
+                dripConfig.startTime : latestDripTime
+        );
+        uint256 startLPToWithdraw = dripConfig.amountToDrip.mul(
+                timeSinceLastDrip.mul(ONE).div(dripConfig.transitionTime)
+            ).div(ONE);
+
+        return startLPToWithdraw;
+    }
+
+    function _swapTokens(uint256 amountIn) internal returns (uint256) {
+        // swap fromToken to endToken
+        address[] memory path = new address[](2);
+        path[0] = address(startToken);
+        path[1] = address(endToken);
+
+        // Calculate minimum expected output, taking slippage into account
+        uint256 expectedOutput = _getQuote(address(startToken), address(endToken)).mul(amountIn).div(ONE);
+        expectedOutput = expectedOutput.mul(ONE.sub(dripConfig.maxSlippageTolerancePct)).div(ONE);
+
+        startToken.approve(address(router), amountIn);
+
+        uint[] memory amounts = router.swapExactTokensForTokens(
+            amountIn,
+            expectedOutput,
+            path,
+            address(this),
+            now + 1
+        );
+
+        return amounts[amounts.length.sub(1)];
+    }
+
+    function _optimizeAmounts(uint256 endAmount, uint256 baseAmount) internal view returns (uint256, uint256) {
+        // optimize token amounts to add as liquidity
+        // based on the amount tokens we've got
+        uint256 quote = _getQuote(address(endToken), address(baseToken));
+        uint256 optimizedBaseTokenAmount = quote.mul(endAmount).div(ONE);
+        uint256 optimizedEndTokenAmount = ONE.div(quote).mul(baseAmount);
+
+        // optimize one side, if not, optimize the other.
+        if (optimizedBaseTokenAmount <= baseAmount){
+            return (endAmount, optimizedBaseTokenAmount);
+        } else if (optimizedEndTokenAmount <= endAmount){
+            return (optimizedEndTokenAmount, baseAmount);
+        }
+    }
+
+    function _addLiquidity(uint256 endAmount, uint256 baseAmount) internal {
+        // add fromToken and necessary amount of baseToken to endLP
+        endToken.approve(address(router), endAmount);
+        baseToken.approve(address(router), baseAmount);
+
+        // actually add the liquidity
+        router.addLiquidity(
+            address(endToken),
+            address(baseToken),
+            endAmount,
+            baseAmount,
+            1,
+            baseAmount,
+            holder,
+            now + 1
+        );
+    }
+
+    function _withdraw(uint256 startLPAmount) internal returns (uint256, uint256) {
+        startLP.approve(address(router), startLPAmount);
+        // withdraw it
+        return router.removeLiquidity(
+            address(startToken),
+            address(baseToken),
+            startLPAmount,
+            1, 1,
+            address(this),
+            now + 1
+        );
     }
 }
