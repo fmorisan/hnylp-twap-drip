@@ -226,14 +226,14 @@ contract Dripper is Ownable {
     /**
      * @dev Helper method to consult the current TWAP.
      */
-    function _getConversionTWAP() internal view returns (uint256) {
+    function _getConversionTWAP() internal view returns (uint256 twap) {
         return twapOracle.consult(address(startToken), ONE, address(endToken));
     }
 
     /**
      * @dev Helper method to get the price between startToken and endToken.
      */
-    function _getConversionPrice() internal view returns (uint256) {
+    function _getConversionPrice() internal view returns (uint256 quote) {
         return _getQuote(address(startToken), address(endToken));
     }
 
@@ -242,7 +242,7 @@ contract Dripper is Ownable {
      * i.e. if 1 TKA = 3 TKB then getQuote(TKA, TKB) = 0.3333...
      * Results expressed with 1e18 being 1.
      */
-    function _getQuote(address tokenA, address tokenB) internal view returns (uint256) {
+    function _getQuote(address tokenA, address tokenB) internal view returns (uint256 quote) {
         IUniswapV2Pair pair = IUniswapV2Pair(
             IUniswapV2Factory(router.factory()).getPair(tokenA, tokenB)
         );
@@ -260,7 +260,10 @@ contract Dripper is Ownable {
         emit DripEnded();
     }
 
-    function _checkPrice() internal view returns (uint256) {
+    /**
+     * @notice Checks that the current pool price is not too far from TWAP
+     */
+    function _checkPrice() internal view returns (uint256 curPrice) {
         uint256 price = _getConversionPrice();
         uint256 twap = _getConversionTWAP();
         require(
@@ -271,7 +274,10 @@ contract Dripper is Ownable {
         return price;
     }
 
-    function _calculateDrip() internal view returns (uint256) {
+    /**
+     * @notice Calculates how much startLP tokens we have to drip right now
+     */
+    function _calculateDrip() internal view returns (uint256 dripAmt) {
         // calculate how much should be withdrawn
         uint256 timeSinceLastDrip = block.timestamp.sub(
             latestDripTime < dripConfig.startTime ?
@@ -284,7 +290,12 @@ contract Dripper is Ownable {
         return startLPToWithdraw;
     }
 
-    function _swapTokens(uint256 amountIn) internal returns (uint256) {
+    /**
+     * @notice Swaps `amountIn` start tokens for end tokens
+     * @param amountIn the amount of startTokens to swap
+     * @return amountOut the output of the swap in endTokens
+     */
+    function _swapTokens(uint256 amountIn) internal returns (uint256 amountOut) {
         // swap fromToken to endToken
         address[] memory path = new address[](2);
         path[0] = address(startToken);
@@ -307,6 +318,12 @@ contract Dripper is Ownable {
         return amounts[amounts.length.sub(1)];
     }
 
+    /**
+     * @notice Optimize token amounts for addition into a liquidity pool
+     * @param endAmount initial guess on how much endTokens to add
+     * @param baseAmount initial guess on how much baseTokens to add
+     * @return optimized endTokenAmount and baseTokenAmount
+     */
     function _optimizeAmounts(uint256 endAmount, uint256 baseAmount) internal view returns (uint256, uint256) {
         // optimize token amounts to add as liquidity
         // based on the amount tokens we've got
@@ -322,6 +339,11 @@ contract Dripper is Ownable {
         }
     }
 
+    /**
+     * @notice Adds liquidity to the endToken/baseToken liquidity pool
+     * @param endAmount the amount of endTokens to add
+     * @param baseAmount the amount of baseTokens to add
+     */
     function _addLiquidity(uint256 endAmount, uint256 baseAmount) internal {
         // add fromToken and necessary amount of baseToken to endLP
         endToken.approve(address(router), endAmount);
@@ -340,6 +362,11 @@ contract Dripper is Ownable {
         );
     }
 
+    /**
+     * @notice Withdraws some startLP tokens for their locked collateral
+     * @param startLPAmount the amount of LP tokens to burn
+     * @return (startAmt, baseAmt) the amount of startToken and baseToken retrieved from the LP token burn
+     */
     function _withdraw(uint256 startLPAmount) internal returns (uint256, uint256) {
         startLP.approve(address(router), startLPAmount);
         // withdraw it
