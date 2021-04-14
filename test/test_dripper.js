@@ -248,6 +248,14 @@ contract("Dripper", ([owner, alice, ...others]) => {
     const initialAGVEBalance = await this.agve.balanceOf(this.dripper.address)
     const initialWETHBalance = await this.weth.balanceOf(this.dripper.address)
     const initialHNYBalance = await this.hny.balanceOf(this.dripper.address)
+
+    await truffleAssert.fails(
+      this.dripper.drip()
+    )
+
+    await truffleAssert.passes(
+      this.dripper.startDripping()
+    )
     await truffleAssert.passes(
       this.dripper.drip()
     )
@@ -295,6 +303,9 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.weth.address, this.hny.address, ONE.toString()
     )
 
+    await truffleAssert.passes(
+      this.dripper.startDripping()
+    )
     await truffleAssert.fails(
       this.dripper.drip()
     )
@@ -336,6 +347,9 @@ contract("Dripper", ([owner, alice, ...others]) => {
       now() + 10
     )
 
+    await truffleAssert.passes(
+      this.dripper.startDripping()
+    )
     await truffleAssert.fails(
       this.dripper.drip()
     )

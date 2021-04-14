@@ -29,6 +29,7 @@ contract Dripper is Ownable {
     }
 
     enum DripStatus {
+        SET,
         RUNNING,
         DONE
     }
@@ -60,7 +61,7 @@ contract Dripper is Ownable {
     string public constant ERROR_DRIP_INTERVAL = "Dripper: Drip interval has not passed.";
     string public constant ERROR_ALREADY_CONFIGURED = "Dripper: Already configured.";
     string public constant ERROR_INTOLERABLE_SLIPPAGE = "Dripper: Slippage exceeds configured limit.";
-    string public constant ERROR_DRIP_DONE = "Dripper: Drip process has ended.";
+    string public constant ERROR_DRIP_NOT_RUNNING = "Dripper: Drip process is not currently runnning.";
     string public constant ERROR_DRIP_NOT_DONE = "Dripper: Drip process has not ended.";
     
 
@@ -122,7 +123,7 @@ contract Dripper is Ownable {
         twapOracle = IOracle(_twapOracle);
 
         dripConfig = DripConfig(
-            now,
+            block.timestamp,
             _dripConfig.transitionTime,
             _dripConfig.dripInterval,
             _dripConfig.maxTWAPDifferencePct,
@@ -133,6 +134,15 @@ contract Dripper is Ownable {
 
         holder = _tokenHolder;
 
+        dripStatus = DripStatus.SET;
+    }
+
+    /**
+     * @notice start the dripping process. This function is separate since it might take 
+     * a long while to set any token approval after contract deplyment.
+     */
+    function startDripping() public onlyOwner {
+        dripConfig.startTime = block.timestamp;
         dripStatus = DripStatus.RUNNING;
     }
 
@@ -146,7 +156,7 @@ contract Dripper is Ownable {
      * dripInterval passes.
      */
     function drip() public {
-        require(dripStatus == DripStatus.RUNNING, ERROR_DRIP_DONE);
+        require(dripStatus == DripStatus.RUNNING, ERROR_DRIP_NOT_RUNNING);
         require(now >= latestDripTime.add(dripConfig.dripInterval), ERROR_DRIP_INTERVAL);
 
         // check current fromToken -> endToken price doesn't deviate too much from TWAP
