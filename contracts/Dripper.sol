@@ -334,7 +334,7 @@ contract Dripper is Ownable {
         // optimize one side, if not, optimize the other.
         if (optimizedBaseTokenAmount <= baseAmount){
             return (endAmount, optimizedBaseTokenAmount);
-        } else if (optimizedEndTokenAmount <= endAmount){
+        } else {
             return (optimizedEndTokenAmount, baseAmount);
         }
     }
