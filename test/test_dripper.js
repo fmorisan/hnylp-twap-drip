@@ -1,5 +1,6 @@
 const Big = require("bignumber.js")
 const truffleAssert = require("truffle-assertions")
+const { default: Web3 } = require("web3")
 
 const IUniswapV2Factory = artifacts.require('IUniswapV2Factory')
 const IUniswapV2Router02 = artifacts.require('IUniswapV2Router02')
@@ -17,7 +18,7 @@ function now() {
 }
 
 contract("Dripper", ([owner, alice, ...others]) => {
-  beforeEach(async () => {
+  before(async () => {
     this.router = await IUniswapV2Router02.at("0x1C232F01118CB8B424793ae03F870aa7D0ac7f77")
     this.factory = await IUniswapV2Factory.at(
       await this.router.factory()
@@ -135,25 +136,41 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.hny.address, this.agve.address, endPriceHNY
     )
 
-    /*
-     * Dripper params:
-     * - startToken:    WETH
-     * - endToken:      HNY
-     * - baseToken:     AGVE
-     * - router:        Router
-     * - twapOracle:    MockSlidingWindowOracle
-     */
+    this.snapshotId = await web3.eth.currentProvider.send({
+      id: 0,
+      jsonrpc: "2.0",
+      method: "evm_snapshot",
+      params: []
+    }, () => null)
+  })
+
+  beforeEach(async () => {
+    await web3.eth.currentProvider.send({
+      id: 0,
+      jsonrpc: "2.0",
+      method: "evm_revert",
+      params: [this.snapshotId]
+    }, () => null)
+
+  })
+
+  it("should be initially configured on deployment", async () => {
     this.dripper = await Dripper.new(
       this.weth.address,
       this.hny.address,
       this.agve.address,
       this.router.address,
-      this.twapOracle.address
+      this.twapOracle.address,
+      owner,
+      {
+        transitionTime: "60",
+        dripInterval: "1",
+        maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
+        maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
+        amountToDrip: ONE.toString()
+      }
     )
 
-  })
-
-  it("should be initially configured on deployment", async () => {
     assert(
       (await this.dripper.startToken()) == this.weth.address, "Start token not set correctly"
     )
@@ -173,52 +190,59 @@ contract("Dripper", ([owner, alice, ...others]) => {
 
   it("should be able to be configured to drip once", async () => {
     const startLPBalance = await this.startLP.balanceOf(owner)
+    /*
+     * Dripper params:
+     * - startToken:    WETH
+     * - endToken:      HNY
+     * - baseToken:     AGVE
+     * - router:        Router
+     * - twapOracle:    MockSlidingWindowOracle
+     */
+    this.dripper = await Dripper.new(
+      this.weth.address,
+      this.hny.address,
+      this.agve.address,
+      this.router.address,
+      this.twapOracle.address,
+      owner,
+      {
+        transitionTime: "60",
+        dripInterval: "1",
+        maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
+        maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
+        amountToDrip: startLPBalance.toString()
+      }
+    )
     await this.startLP.approve(
       this.dripper.address,
       startLPBalance
     )
-    await truffleAssert.passes(
-      this.dripper.startDrip(
-        owner,
-        startLPBalance,
-        new Big(1),
-        new Big(60),
-        ONE.div(100).times(2),
-        ONE.div(100).times(2)
-      )
-    )
 
     assert(await this.dripper.holder() == owner, `Holder should be ${owner}, got ${await this.dripper.holder()} instead.`)
-
-    await truffleAssert.reverts(
-      this.dripper.startDrip(
-        owner,
-        startLPBalance,
-        new Big(1),
-        new Big(60),
-        ONE.div(100).times(2),
-        ONE.div(100).times(2)
-      )
-    )
   })
 
   it("should drip whenever the price doesn't deviate too far from the TWAP", async () => {
     const startLPBalance = await this.startLP.balanceOf(owner)
+    this.dripper = await Dripper.new(
+      this.weth.address,
+      this.hny.address,
+      this.agve.address,
+      this.router.address,
+      this.twapOracle.address,
+      owner,
+      {
+        transitionTime: "60",
+        dripInterval: "1",
+        maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
+        maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
+        amountToDrip: startLPBalance.toString()
+      }
+    )
+
     await this.startLP.approve(
       this.dripper.address,
       startLPBalance
     )
-    await truffleAssert.passes(
-      this.dripper.startDrip(
-        owner,
-        startLPBalance,
-        new Big(3600),
-        new Big(60),
-        ONE.div(100).times(2),
-        ONE.div(100).times(2)
-      )
-    )
-
     // Drip test steps
     // Set up fake twap oracle
     const initialAGVEBalance = await this.agve.balanceOf(this.dripper.address)
@@ -246,23 +270,29 @@ contract("Dripper", ([owner, alice, ...others]) => {
 
   it("should not drip if the current price has deviated too far from the reported TWAP", async () => {
     const startLPBalance = await this.startLP.balanceOf(owner)
+    this.dripper = await Dripper.new(
+      this.weth.address,
+      this.hny.address,
+      this.agve.address,
+      this.router.address,
+      this.twapOracle.address,
+      owner,
+      {
+        transitionTime: "60",
+        dripInterval: "1",
+        maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
+        maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
+        amountToDrip: startLPBalance.toString()
+      }
+    )
+
     await this.startLP.approve(
       this.dripper.address,
-      startLPBalance
-    )
-    await truffleAssert.passes(
-      this.dripper.startDrip(
-        owner,
-        startLPBalance,
-        new Big(3600),
-        new Big(60),
-        ONE.div(100).times(2),
-        ONE.div(100).times(2)
-      )
+      startLPBalance.toString()
     )
 
     this.twapOracle.setPrice(
-      this.weth.address, this.hny.address, ONE
+      this.weth.address, this.hny.address, ONE.toString()
     )
 
     await truffleAssert.fails(
@@ -272,21 +302,26 @@ contract("Dripper", ([owner, alice, ...others]) => {
 
   it("should not drip if the conversion pool has low liquidity => high slippage", async () => {
     const startLPBalance = await this.startLP.balanceOf(owner)
-    await this.startLP.approve(
-      this.dripper.address,
-      startLPBalance
-    )
-    await truffleAssert.passes(
-      this.dripper.startDrip(
-        owner,
-        startLPBalance,
-        new Big(3600),
-        new Big(60),
-        ONE.div(100).times(2),
-        ONE.div(100).times(2)
-      )
+    this.dripper = await Dripper.new(
+      this.weth.address,
+      this.hny.address,
+      this.agve.address,
+      this.router.address,
+      this.twapOracle.address,
+      owner,
+      {
+        transitionTime: "60",
+        dripInterval: "1",
+        maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
+        maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
+        amountToDrip: startLPBalance.toString()
+      }
     )
 
+    await this.startLP.approve(
+      this.dripper.address,
+      startLPBalance.toString()
+    )
     // remove 99% of the WETH/HNY liquidity to force a high slippage
     const conversionLPBalance = new Big(await this.conversionLP.balanceOf(owner))
     const clp = conversionLPBalance.div(new Big(100)).times(new Big(99))
@@ -295,8 +330,8 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.weth.address,
       this.hny.address,
       clp.toFixed(0),
-      ONE,
-      ONE,
+      ONE.toString(),
+      ONE.toString(),
       owner,
       now() + 10
     )
@@ -306,34 +341,28 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
   })
 
-  it("should send back tokens to the owner if retrieve function is called without a holder set", async () => {
-    await this.hny.transfer(this.dripper.address, ONE)
-    const hnybalanceBefore = await this.hny.balanceOf(this.dripper.address)
-
-    const owner_hnybalance_before = await this.hny.balanceOf(owner)
-    await truffleAssert.passes(
-      this.dripper.retrieve(this.hny.address)
-    )
-    const hnybalance = await this.hny.balanceOf(this.dripper.address)
-    const owner_hnybalance_after = await this.hny.balanceOf(owner)
-    assert(new Big(hnybalance).eq(new Big(0)), `Balance should be zero, but is ${hnybalance.toString()}`)
-    assert(owner_hnybalance_before.lt(owner_hnybalance_after), "owner should have received tokens")
-  })
-
   it("should send back tokens to the holder if retrieve function is called with a holder set", async () => {
-    await this.hny.transfer(this.dripper.address, ONE)
-    const hnybalanceBefore = await this.hny.balanceOf(this.dripper.address)
-    await this.dripper.startDrip(
-        alice,
-        ONE,
-        new Big(3600),
-        new Big(60),
-        ONE.div(100).times(2),
-        ONE.div(100).times(2)
+    this.dripper = await Dripper.new(
+      this.weth.address,
+      this.hny.address,
+      this.agve.address,
+      this.router.address,
+      this.twapOracle.address,
+      alice,
+      {
+        transitionTime: "60",
+        dripInterval: "1",
+        maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
+        maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
+        amountToDrip: ONE.toString()
+      }
     )
 
+    await this.hny.transfer(this.dripper.address, ONE.toString())
+    const hnybalanceBefore = await this.hny.balanceOf(this.dripper.address)
+
     await truffleAssert.passes(
-      this.dripper.retrieve(this.hny.address)
+      this.dripper.abort()
     )
     const hnybalance = await this.hny.balanceOf(this.dripper.address)
     const alice_hnybalance = await this.hny.balanceOf(alice)
