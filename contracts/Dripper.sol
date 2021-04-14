@@ -28,6 +28,13 @@ contract Dripper is Ownable {
         uint amountToDrip;
     }
 
+    enum DripStatus {
+        RUNNING,
+        DONE
+    }
+
+    DripStatus public dripStatus;
+
     /**
      * startTime: the starting timestamp of the drip process
      * transitionTime: the total time the drip process will run for
@@ -43,6 +50,7 @@ contract Dripper is Ownable {
         uint maxTWAPDifferencePct;
         uint maxSlippageTolerancePct;
         uint amountToDrip;
+        uint amountDripped;
     }
 
     DripConfig public dripConfig;
@@ -52,6 +60,7 @@ contract Dripper is Ownable {
     string public constant ERROR_DRIP_INTERVAL = "Dripper: Drip interval has not passed.";
     string public constant ERROR_ALREADY_CONFIGURED = "Dripper: Already configured.";
     string public constant ERROR_INTOLERABLE_SLIPPAGE = "Dripper: Slippage exceeds configured limit.";
+    string public constant ERROR_DRIP_DONE = "Dripper: Drip process has ended.";
 
     uint256 private constant ONE = 10**18;
 
@@ -113,10 +122,13 @@ contract Dripper is Ownable {
             _dripConfig.dripInterval,
             _dripConfig.maxTWAPDifferencePct,
             _dripConfig.maxSlippageTolerancePct,
-            _dripConfig.amountToDrip
+            _dripConfig.amountToDrip,
+            0
         );
 
         holder = _tokenHolder;
+
+        dripStatus = DripStatus.RUNNING;
     }
 
     /**
@@ -129,6 +141,7 @@ contract Dripper is Ownable {
      * dripInterval passes.
      */
     function drip() public {
+        require(dripStatus == DripStatus.RUNNING, ERROR_DRIP_DONE);
         require(now >= latestDripTime.add(dripConfig.dripInterval), ERROR_DRIP_INTERVAL);
         // check current fromToken -> endToken price doesn't deviate too much from TWAP
         uint256 price = _getConversionPrice();
@@ -157,6 +170,9 @@ contract Dripper is Ownable {
             require(
                 startLP.transferFrom(holder, address(this), startLPToWithdraw)
             );
+
+            // update drip progress counter
+            dripConfig.amountDripped = dripConfig.amountDripped.add(startLPToWithdraw);
 
             startLP.approve(address(router), startLPToWithdraw);
             // withdraw it
@@ -228,6 +244,10 @@ contract Dripper is Ownable {
         latestDripTime = now;
 
         emit Drip(price, baseTokenFromStartLP, endTokenToAddAsLiquidity);
+
+        if (dripConfig.amountDripped >= dripConfig.amountToDrip) {
+            dripStatus = DripStatus.DONE;
+        }
     }
 
     /**
