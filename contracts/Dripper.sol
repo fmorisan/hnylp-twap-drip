@@ -276,6 +276,7 @@ contract Dripper is Ownable {
 
     /**
      * @notice Calculates how much startLP tokens we have to drip right now
+     * Clamps the returned value to the remaining drip amount.
      */
     function _calculateDrip() internal view returns (uint256 dripAmt) {
         // calculate how much should be withdrawn
@@ -286,6 +287,12 @@ contract Dripper is Ownable {
         uint256 startLPToWithdraw = dripConfig.amountToDrip.mul(
                 timeSinceLastDrip.mul(ONE).div(dripConfig.transitionTime)
             ).div(ONE);
+
+        uint256 remainingDrip = dripConfig.amountToDrip.sub(dripConfig.amountDripped);
+        
+        if (remainingDrip < startLPToWithdraw) {
+            return remainingDrip;
+        }
 
         return startLPToWithdraw;
     }
