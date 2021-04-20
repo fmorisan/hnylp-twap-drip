@@ -119,7 +119,7 @@ contract("Dripper", ([owner, alice, ...others]) => {
     }
     const conversionPriceWETH = await this.router.quote(ONE, conversion_reserve_weth, conversion_reserve_hny)
     await this.twapOracle.setPrice(
-      this.weth.address, this.hny.address, conversionPriceWETH
+      this.hny.address, this.weth.address, conversionPriceWETH
     )
 
     const endLPReserves = await this.endLP.getReserves()

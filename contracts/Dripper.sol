@@ -14,8 +14,6 @@ import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-periphery/contracts/examples/ExampleSlidingWindowOracle.sol";
 import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 
-import "hardhat/console.sol";
-
 
 contract Dripper is Ownable {
     using OZSafeMath for uint256;
