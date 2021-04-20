@@ -161,13 +161,11 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.agve.address,
       this.router.address,
       this.twapOracle.address,
-      owner,
       {
         transitionTime: "60",
         dripInterval: "1",
         maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
         maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
-        amountToDrip: ONE.toString()
       }
     )
 
@@ -204,18 +202,22 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.agve.address,
       this.router.address,
       this.twapOracle.address,
-      owner,
       {
         transitionTime: "60",
         dripInterval: "1",
         maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
         maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
-        amountToDrip: startLPBalance.toString()
       }
     )
     await this.startLP.approve(
       this.dripper.address,
       startLPBalance
+    )
+    await truffleAssert.passes(
+      this.dripper.startDripping(
+        owner,
+        startLPBalance.toString()
+      )
     )
 
     assert(await this.dripper.holder() == owner, `Holder should be ${owner}, got ${await this.dripper.holder()} instead.`)
@@ -229,13 +231,11 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.agve.address,
       this.router.address,
       this.twapOracle.address,
-      owner,
       {
         transitionTime: "60",
         dripInterval: "1",
         maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
         maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
-        amountToDrip: startLPBalance.toString()
       }
     )
 
@@ -254,7 +254,10 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
 
     await truffleAssert.passes(
-      this.dripper.startDripping()
+      this.dripper.startDripping(
+        owner,
+        startLPBalance.toString()
+      )
     )
     await truffleAssert.passes(
       this.dripper.drip()
@@ -284,13 +287,11 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.agve.address,
       this.router.address,
       this.twapOracle.address,
-      owner,
       {
         transitionTime: "60",
         dripInterval: "1",
         maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
         maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
-        amountToDrip: startLPBalance.toString()
       }
     )
 
@@ -304,7 +305,10 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
 
     await truffleAssert.passes(
-      this.dripper.startDripping()
+      this.dripper.startDripping(
+        owner,
+        startLPBalance.toString()
+      )
     )
     await truffleAssert.fails(
       this.dripper.drip()
@@ -319,13 +323,11 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.agve.address,
       this.router.address,
       this.twapOracle.address,
-      owner,
       {
         transitionTime: "60",
         dripInterval: "1",
         maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
         maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
-        amountToDrip: startLPBalance.toString()
       }
     )
 
@@ -348,7 +350,10 @@ contract("Dripper", ([owner, alice, ...others]) => {
     )
 
     await truffleAssert.passes(
-      this.dripper.startDripping()
+      await this.dripper.startDripping(
+        owner,
+        startLPBalance.toString()
+      )
     )
     await truffleAssert.fails(
       this.dripper.drip()
@@ -362,13 +367,11 @@ contract("Dripper", ([owner, alice, ...others]) => {
       this.agve.address,
       this.router.address,
       this.twapOracle.address,
-      alice,
       {
         transitionTime: "60",
         dripInterval: "1",
         maxTWAPDifferencePct: ONE.div(100).times(2).toString(),
         maxSlippageTolerancePct: ONE.div(100).times(2).toString(),
-        amountToDrip: ONE.toString()
       }
     )
 

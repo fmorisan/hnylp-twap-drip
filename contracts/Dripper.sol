@@ -23,7 +23,6 @@ contract Dripper is Ownable {
         uint dripInterval;
         uint maxTWAPDifferencePct;
         uint maxSlippageTolerancePct;
-        uint amountToDrip;
     }
 
     enum DripStatus {
@@ -95,7 +94,6 @@ contract Dripper is Ownable {
      * @param _endToken the ending LP specific token
      * @param _router the address of the Uniswap Router that knows the pools we're going to interact with
      * @param _twapOracle the TWAP oracle that keeps track of LP states
-     * @param _tokenHolder the address that holds the LP tokens we will interact with
      * @param _dripConfig the configuration parameters for the drippping process
      */
     constructor(
@@ -104,7 +102,6 @@ contract Dripper is Ownable {
         address _baseToken,
         address payable _router,
         address _twapOracle,
-        address _tokenHolder,
         DripParams memory _dripConfig
     ) public Ownable() {
         router = IUniswapV2Router02(_router);
@@ -126,11 +123,9 @@ contract Dripper is Ownable {
             _dripConfig.dripInterval,
             _dripConfig.maxTWAPDifferencePct,
             _dripConfig.maxSlippageTolerancePct,
-            _dripConfig.amountToDrip,
+            0, // will be set up when startDripping is called
             0
         );
-
-        holder = _tokenHolder;
 
         dripStatus = DripStatus.SET;
     }
@@ -138,8 +133,12 @@ contract Dripper is Ownable {
     /**
      * @notice start the dripping process. This function is separate since it might take 
      * a long while to set any token approval after contract deplyment.
+     * @param _tokenHolder the address that holds the LP tokens we will interact with
+     * @param _amountToDrip the amount of start LP tokens whose value we will drip
      */
-    function startDripping() public onlyOwner {
+    function startDripping(address _tokenHolder, uint256 _amountToDrip) public onlyOwner {
+        holder = _tokenHolder;
+        dripConfig.amountToDrip = _amountToDrip;
         dripConfig.startTime = block.timestamp;
         dripStatus = DripStatus.RUNNING;
     }
