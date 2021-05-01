@@ -17,6 +17,8 @@ function now() {
   return Math.floor(new Date() / 1000);
 }
 
+const XDAI_TWAP = "0x799b1fc1ad2b0c5fce797cced14390270609a07d"
+
 contract("Dripper", ([owner, alice, ...others]) => {
   before(async () => {
     this.router = await IUniswapV2Router02.at("0x1C232F01118CB8B424793ae03F870aa7D0ac7f77")

@@ -1,8 +1,6 @@
 pragma experimental ABIEncoderV2;
 pragma solidity ^0.6.0;
 
-import "./interfaces/IOracle.sol";
-
 import "@openzeppelin/contracts/access/Ownable.sol";
 import { IERC20 as OZIERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import { SafeMath as OZSafeMath } from "@openzeppelin/contracts/math/SafeMath.sol";
@@ -11,8 +9,9 @@ import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Factory.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 
-import "@uniswap/v2-periphery/contracts/examples/ExampleSlidingWindowOracle.sol";
 import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
+
+import "./OracleSimple.sol";
 
 
 contract Dripper is Ownable {
@@ -74,7 +73,7 @@ contract Dripper is Ownable {
     OZIERC20 public endToken; // HNY
     OZIERC20 public baseToken; // AGVE
 
-    IOracle public twapOracle;
+    OracleSimple public twapOracle;
 
     address public holder;
 
@@ -115,7 +114,7 @@ contract Dripper is Ownable {
         endLP = IUniswapV2Pair(factory.getPair(_endToken, _baseToken));
         conversionLP = IUniswapV2Pair(factory.getPair(_startToken, _endToken));
 
-        twapOracle = IOracle(_twapOracle);
+        twapOracle = OracleSimple(_twapOracle);
 
         dripConfig = DripConfig(
             block.timestamp,
@@ -137,6 +136,7 @@ contract Dripper is Ownable {
      * @param _amountToDrip the amount of start LP tokens whose value we will drip
      */
     function startDripping(address _tokenHolder, uint256 _amountToDrip) public onlyOwner {
+        require(dripStatus == DripStatus.SET, "Cannot start twice.");
         holder = _tokenHolder;
         dripConfig.amountToDrip = _amountToDrip;
         dripConfig.startTime = block.timestamp;
@@ -224,7 +224,7 @@ contract Dripper is Ownable {
      * @dev Helper method to consult the current TWAP.
      */
     function _getConversionTWAP() internal view returns (uint256 twap) {
-        return twapOracle.consult(address(startToken), ONE, address(endToken));
+        return twapOracle.consult(address(startToken), ONE);
     }
 
     /**
@@ -313,7 +313,7 @@ contract Dripper is Ownable {
 
         uint[] memory amounts = router.swapExactTokensForTokens(
             amountIn,
-            expectedOutput,
+            1,
             path,
             address(this),
             now + 1
