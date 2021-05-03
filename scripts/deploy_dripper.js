@@ -9,7 +9,7 @@ const AGVE = "0x3a97704a1b25F08aa230ae53B352e2e72ef52843"
 const HNY = "0x71850b7E9Ee3f13Ab46d67167341E4bDc905Eef9"
 const WETH = "0x6A023CCd1ff6F2045C3309768eAd9E68F978f6e1"
 const ROUTER = "0x1C232F01118CB8B424793ae03F870aa7D0ac7f77"
-const ORACLE = "0xE993b730154829799D6a4770C62429FdB590b51F"
+const ORACLE = "0x93ECFa160D78f4e9D0d140Ef50C0409EFFc13BB1"
 
 const UniswapV2Library = artifacts.require("UniswapV2Library")
 const IUniswapV2Router02 = artifacts.require("IUniswapV2Router02")
@@ -46,8 +46,8 @@ async function main() {
             // transitionTime: new BigNumber(30).times(24 * 60 * 60).toString(),  // 30 days
             transitionTime: new BigNumber(10).times(60 * 60).toString(),  // 10 hours
             dripInterval: new BigNumber(15).times(60).toString(),  // 15 minutes
-            maxTWAPDifferencePct: ONE.div(100).times(5).toString(),  // 2%
-            maxSlippageTolerancePct: ONE.div(100).times(5).toString(),  // 2%
+            maxTWAPDifferencePct: ONE.div(100).times(5).toString(),  // 5%
+            maxSlippageTolerancePct: ONE.div(100).times(5).toString(),  // 5%
         }
     );
   
