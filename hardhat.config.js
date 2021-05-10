@@ -5,6 +5,8 @@ require('@nomiclabs/hardhat-truffle5')
 require('@nomiclabs/hardhat-ethers')
 require("hardhat-gas-reporter")
 require("hardhat-contract-sizer")
+require("@nomiclabs/hardhat-etherscan")
+require("hardhat-deploy")
 require('dotenv').config()
 
 module.exports = {
@@ -26,9 +28,10 @@ module.exports = {
     },
     xdai: {
       url: 'https://xdai.1hive.org',
+      gasPrice: 1000000000,
       accounts: {
         mnemonic: process.env.MNEMONIC
-      }
+      },
     },
   },
   paths: {
@@ -41,5 +44,10 @@ module.exports = {
   },
   mocha: {
     timeout: 100000
+  },
+  namedAccounts: {
+    deployer: {
+      default: 0
+    }
   }
 };
