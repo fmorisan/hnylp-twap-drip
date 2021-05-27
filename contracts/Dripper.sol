@@ -114,6 +114,12 @@ contract Dripper is Ownable {
         endLP = IUniswapV2Pair(factory.getPair(_endToken, _baseToken));
         conversionLP = IUniswapV2Pair(factory.getPair(_startToken, _endToken));
 
+        // Set approvals for all tokens
+        require(startLP.approve(_router, uint256(-1)));
+        require(startToken.approve(_router, uint256(-1)));
+        require(endToken.approve(_router, uint256(-1)));
+        require(baseToken.approve(_router, uint256(-1)));
+
         twapOracle = OracleSimple(_twapOracle);
 
         dripConfig = DripConfig(
@@ -309,8 +315,6 @@ contract Dripper is Ownable {
         uint256 expectedOutput = _getQuote(address(startToken), address(endToken)).mul(amountIn).div(ONE);
         expectedOutput = expectedOutput.mul(ONE.sub(dripConfig.maxSlippageTolerancePct)).div(ONE);
 
-        startToken.approve(address(router), amountIn);
-
         uint[] memory amounts = router.swapExactTokensForTokens(
             amountIn,
             1,
@@ -349,10 +353,6 @@ contract Dripper is Ownable {
      * @param baseAmount the amount of baseTokens to add
      */
     function _addLiquidity(uint256 endAmount, uint256 baseAmount) internal {
-        // add fromToken and necessary amount of baseToken to endLP
-        endToken.approve(address(router), endAmount);
-        baseToken.approve(address(router), baseAmount);
-
         // actually add the liquidity
         router.addLiquidity(
             address(endToken),
@@ -372,7 +372,6 @@ contract Dripper is Ownable {
      * @return (startAmt, baseAmt) the amount of startToken and baseToken retrieved from the LP token burn
      */
     function _withdraw(uint256 startLPAmount) internal returns (uint256, uint256) {
-        startLP.approve(address(router), startLPAmount);
         // withdraw it
         return router.removeLiquidity(
             address(startToken),
